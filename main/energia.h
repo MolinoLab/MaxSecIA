@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "driver/i2c_master.h"
+
 typedef enum {
     DESPERTAR_ENCENDIDO,  // arranque normal (botón PWR o USB)
     DESPERTAR_BOOT,       // botón BOOT durante el sueño profundo: grabar
@@ -18,6 +20,10 @@ typedef enum {
 
 // Lo primero en app_main: enclava la batería y libera los pines retenidos durante el sueño.
 despertar_t energia_iniciar(void);
+
+// AXP2101: enciende ALDO1/2/3 a 3,3 V (pantalla, SD, periféricos). Hay que
+// llamarlo antes de montar la microSD.
+void energia_pmic_iniciar(i2c_master_bus_handle_t bus);
 
 void energia_audio(bool encendido);
 void energia_pantalla(bool encendido);

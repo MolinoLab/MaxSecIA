@@ -38,9 +38,9 @@ bool almacen_montar(void)
         .allocation_unit_size = 32 * 1024,
     };
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
     sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot.width = 4;
+    slot.width = 1;  // el ejemplo de Waveshare arranca en 1 bit
     slot.clk = PIN_SD_CLK;
     slot.cmd = PIN_SD_CMD;
     slot.d0 = PIN_SD_D0;
@@ -51,8 +51,9 @@ bool almacen_montar(void)
 
     esp_err_t err = esp_vfs_fat_sdmmc_mount(PUNTO_MONTAJE, &host, &slot, &cfg, &s_tarjeta);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "SD 4 bits falló (%s); se prueba 1 bit", esp_err_to_name(err));
-        slot.width = 1;
+        ESP_LOGW(TAG, "SD 1 bit falló (%s); se prueba 4 bits", esp_err_to_name(err));
+        slot.width = 4;
+        host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
         err = esp_vfs_fat_sdmmc_mount(PUNTO_MONTAJE, &host, &slot, &cfg, &s_tarjeta);
     }
     if (err != ESP_OK) {

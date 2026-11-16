@@ -10,6 +10,48 @@
 
 static const char *TAG = "energia";
 static volatile modo_led_t s_modo_led = LED_APAGADO;
+static i2c_master_dev_handle_t s_pmic = NULL;
+
+static bool pmic_escribir(uint8_t reg, uint8_t val)
+{
+    if (!s_pmic) {
+        return false;
+    }
+    uint8_t buf[2] = {reg, val};
+    return i2c_master_transmit(s_pmic, buf, sizeof(buf), 100) == ESP_OK;
+}
+
+void energia_pmic_iniciar(i2c_master_bus_handle_t bus)
+{
+    i2c_device_config_t cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = DIR_PMIC,
+        .scl_speed_hz = 100000,
+    };
+    if (i2c_master_bus_add_device(bus, &cfg, &s_pmic) != ESP_OK) {
+        ESP_LOGW(TAG, "No hay AXP2101 en el bus I2C");
+        s_pmic = NULL;
+        return;
+    }
+    // Secuencia publicada para esta placa (xiaozhi / Waveshare 3.97): ALDO1–3 a 3,3 V.
+    pmic_escribir(0x22, 0x06);
+    pmic_escribir(0x27, 0x10);
+    pmic_escribir(0x80, 0x01);
+    pmic_escribir(0x90, 0x00);
+    pmic_escribir(0x91, 0x00);
+    pmic_escribir(0x82, (3300 - 1500) / 100);
+    pmic_escribir(0x92, (3300 - 500) / 100);
+    pmic_escribir(0x93, (3300 - 500) / 100);
+    pmic_escribir(0x94, (3300 - 500) / 100);
+    pmic_escribir(0x90, 0x07);
+    pmic_escribir(0x64, 0x03);
+    pmic_escribir(0x61, 0x02);
+    pmic_escribir(0x62, 0x08);
+    pmic_escribir(0x63, 0x01);
+    // La microSD y el panel necesitan que los ALDO estabilicen (ejemplo Waveshare: ~1 s).
+    vTaskDelay(pdMS_TO_TICKS(800));
+    ESP_LOGI(TAG, "AXP2101: ALDO1-3 a 3,3 V");
+}
 
 // La 3.97 no tiene LED de estado ni raíles GPIO como la 1.54G.
 // El apagado real de la batería lo hace el AXP2101; aquí solo hay sueño profundo.

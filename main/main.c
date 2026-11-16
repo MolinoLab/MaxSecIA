@@ -386,6 +386,7 @@ void app_main(void)
         nvs_flash_init();
     }
     iniciar_i2c();
+    energia_pmic_iniciar(s_i2c);
     reloj_iniciar(s_i2c);
     botones_iniciar(causa == DESPERTAR_BOOT);
 
