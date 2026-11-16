@@ -1,5 +1,5 @@
-// e-Paper 3,97" 800x480 monocromo. Secuencia de refresco completo al estilo
-// de los ejemplos públicos de Waveshare para este panel (SSD1677). Sin probar en placa.
+// e-Paper 3,97" 800x480 monocromo (SSD1677).
+// Secuencia alineada con el ejemplo oficial Waveshare EPD_3in97 (Init + Display_Base).
 #include "pantalla.h"
 
 #include <string.h>
@@ -62,7 +62,7 @@ static void datos(const uint8_t *d, size_t n)
     gpio_set_level(PIN_EPD_CS, 1);
 }
 
-// BUSY en alto mientras el controlador refresca.
+// Waveshare: BUSY en alto mientras refresca; libre en bajo.
 static bool esperar_libre(void)
 {
     for (int ms = 0; ms < BUSY_TIMEOUT_MS; ms += 20) {
@@ -77,8 +77,10 @@ static bool esperar_libre(void)
 
 static void reset_hw(void)
 {
-    gpio_set_level(PIN_EPD_RST, 0);
+    gpio_set_level(PIN_EPD_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(20));
+    gpio_set_level(PIN_EPD_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(2));
     gpio_set_level(PIN_EPD_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(20));
 }
@@ -89,49 +91,65 @@ static bool iniciar_panel(void)
     if (!esperar_libre()) {
         return false;
     }
-    comando(0x12);
+    comando(0x12);  // SWRESET
     if (!esperar_libre()) {
         return false;
     }
+
     comando(0x18);
     dato(0x80);
+
     comando(0x0C);
     dato(0xAE);
     dato(0xC7);
     dato(0xC3);
     dato(0xC0);
-    dato(0x40);
+    dato(0x80);
+
+    // Driver output: HEIGHT-1 = 479, SM=0x02
     comando(0x01);
-    dato(0xDF);
+    dato((EPD_ALTO - 1) & 0xFF);
+    dato((EPD_ALTO - 1) >> 8);
+    dato(0x02);
+
+    comando(0x3C);
     dato(0x01);
-    dato(0x00);
+
+    // X+, Y-
     comando(0x11);
     dato(0x01);
+
+    // RAM X: 0 .. WIDTH-1 (en píxeles)
     comando(0x44);
     dato(0x00);
     dato(0x00);
-    dato(0x3F);
-    dato(0x03);
+    dato((EPD_ANCHO - 1) & 0xFF);
+    dato((EPD_ANCHO - 1) >> 8);
+
+    // RAM Y: HEIGHT-1 .. 0
     comando(0x45);
+    dato((EPD_ALTO - 1) & 0xFF);
+    dato((EPD_ALTO - 1) >> 8);
     dato(0x00);
     dato(0x00);
-    dato(0xDF);
-    dato(0x01);
+
     comando(0x4E);
     dato(0x00);
     dato(0x00);
     comando(0x4F);
     dato(0x00);
     dato(0x00);
-    comando(0x3C);
-    dato(0x01);
-    return true;
+    return esperar_libre();
 }
 
 static void volcar_y_refrescar(void)
 {
+    // Display_Base: mismo frame en 0x24 (BW) y 0x26 (RED/previo).
     comando(0x24);
     datos(s_fb, EPD_BYTES);
+    comando(0x26);
+    datos(s_fb, EPD_BYTES);
+
     comando(0x22);
     dato(0xF7);
     comando(0x20);
@@ -180,6 +198,7 @@ void pantalla_iniciar(void)
     };
     gpio_config(&sal);
     gpio_set_level(PIN_EPD_CS, 1);
+    gpio_set_level(PIN_EPD_RST, 1);
     gpio_config_t ent = {.pin_bit_mask = 1ULL << PIN_EPD_BUSY, .mode = GPIO_MODE_INPUT};
     gpio_config(&ent);
     xTaskCreate(tarea_pantalla, "pantalla", 4096, NULL, 3, &s_tarea);
