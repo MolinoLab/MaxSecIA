@@ -67,6 +67,7 @@ bool almacen_montar(void)
     crear_dir(DIR_IMG_FIJAS);
     crear_dir(DIR_IMG_REM);
     crear_dir(DIR_CACHE);
+    crear_dir("/sdcard/libros");
     ESP_LOGI(TAG, "microSD montada (%llu MB)",
              ((unsigned long long)s_tarjeta->csd.capacity) * s_tarjeta->csd.sector_size / (1024 * 1024));
     return true;

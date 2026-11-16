@@ -21,6 +21,18 @@ static bool pmic_escribir(uint8_t reg, uint8_t val)
     return i2c_master_transmit(s_pmic, buf, sizeof(buf), 100) == ESP_OK;
 }
 
+static int pmic_leer(uint8_t reg)
+{
+    if (!s_pmic) {
+        return -1;
+    }
+    uint8_t v = 0;
+    if (i2c_master_transmit_receive(s_pmic, &reg, 1, &v, 1, 100) != ESP_OK) {
+        return -1;
+    }
+    return v;
+}
+
 void energia_pmic_iniciar(i2c_master_bus_handle_t bus)
 {
     i2c_device_config_t cfg = {
@@ -48,6 +60,11 @@ void energia_pmic_iniciar(i2c_master_bus_handle_t bus)
     pmic_escribir(0x61, 0x02);
     pmic_escribir(0x62, 0x08);
     pmic_escribir(0x63, 0x01);
+    // Canal ADC de tensión de batería (bit 0 de 0x30).
+    int adc = pmic_leer(0x30);
+    if (adc >= 0) {
+        pmic_escribir(0x30, (uint8_t)(adc | 0x01));
+    }
     // La microSD y el panel necesitan que los ALDO estabilicen (ejemplo Waveshare: ~1 s).
     vTaskDelay(pdMS_TO_TICKS(800));
     ESP_LOGI(TAG, "AXP2101: ALDO1-3 a 3,3 V");
@@ -91,8 +108,16 @@ void energia_led(modo_led_t modo)
 
 int energia_bateria_mv(void)
 {
-    // La tensión sale del AXP2101; aún no se lee por I2C.
-    return 0;
+    int hi = pmic_leer(0x34);
+    int lo = pmic_leer(0x35);
+    if (hi < 0 || lo < 0) {
+        return 0;
+    }
+    int mv = ((hi & 0x3F) << 8) | lo;
+    if (mv < 2500 || mv > 4500) {
+        return 0;
+    }
+    return mv;
 }
 
 static void esperar_botones_sueltos(void)

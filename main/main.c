@@ -1,7 +1,8 @@
 // MaxSecIA: grabadora y visor e-Paper 3.97" (voz igual que MiniSecIA, POST /voz).
 //
-// Record (BOOT) largo: grabar hasta soltar. Corto: atrás.
-// Rocker: arriba / abajo / select. PWR corto: bloqueo. PWR largo: apagar.
+// BOOT corto: grabar / terminar. BOOT largo: sincronizar.
+// PWR corto: cancelar grabación o estado de cola. PWR largo: apagar.
+// Rocker: arriba / abajo. Select corto: entrar. Select largo: salir.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,9 +198,14 @@ static void tarea_sync(void *arg)
                     tono_resultado(r);
                 }
                 if (almacen_montada()) {
-                    if (contenido_sincronizar()) {
+                    int antes = ui_num_items();
+                    int cr = contenido_sincronizar();
+                    if (cr >= 0) {
                         ui_cargar_cache();
-                        ui_pintar(ui_pantalla() == UI_LOCK ? UI_LOCK : UI_HOME);
+                        if (cr > 0 || antes == 0) {
+                            ui_repintar();
+                        }
+                        ESP_LOGI(TAG, "UI cache %d items (sync %d)", ui_num_items(), cr);
                     }
                 }
                 red_desconectar();
@@ -252,6 +258,8 @@ static void terminar_grabacion(bool cancelar)
         return;
     }
     audio_tono(TONO_FIN);
+    actividad();
+    ESP_LOGI(TAG, "Grabacion en cola (%lu bytes), pidiendo sync", (unsigned long)bytes);
     pedir_sync(SYNC_AVISAR);
 }
 
@@ -278,27 +286,20 @@ static void apagar(void)
     if (audio_grabando()) {
         terminar_grabacion(false);  // se queda en la cola para la próxima vez
     }
-    ui_pintar(UI_LOCK);
+    if (ui_pantalla() != UI_LOCK) {
+        ui_pintar(UI_LOCK);
+        esperar_pantalla();
+    }
     audio_tono(TONO_APAGADO);
-    esperar_pantalla();
     red_desconectar();
     audio_apagar();
     almacen_desmontar();
     energia_apagar();
 }
 
-static void pintar_bloqueo(void)
-{
-    ui_cargar_cache();
-    ui_pintar(UI_LOCK);
-    for (int i = 0; i < 200 && pantalla_ocupada(); i++) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
-
 static void dormir(void)
 {
-    pintar_bloqueo();
+    // El e-paper conserva la última imagen. No hace falta redibujar al descansar.
     uint32_t seg = 0;
     if (almacen_montada() && almacen_contar_cola() > 0 && ajustes_servidor_configurado() && !s_no_autorizado) {
         uint32_t factor = 1u << (s_fallos_seguidos < 5 ? s_fallos_seguidos : 5);
@@ -313,50 +314,77 @@ static void dormir(void)
     energia_dormir(seg);
 }
 
+static int64_t s_ignorar_ruleta_us = 0;
+
 static void manejar_boton(evento_boton_t ev)
 {
     s_reposo_rapido = false;
+    if ((ev == EV_ARRIBA || ev == EV_ABAJO) && ahora_us() < s_ignorar_ruleta_us) {
+        return;
+    }
     switch (ev) {
     case EV_BOOT_CORTO:
         if (audio_grabando()) {
-            terminar_grabacion(true);
-        } else if (ui_pantalla() == UI_LOCK) {
-            ui_pintar(UI_HOME);
+            terminar_grabacion(false);
         } else {
-            ui_atras();
+            empezar_grabacion();
         }
         break;
     case EV_BOOT_LARGO:
         if (!audio_grabando()) {
-            empezar_grabacion();
-        }
-        break;
-    case EV_BOOT_SUELTO:
-        if (audio_grabando()) {
-            terminar_grabacion(false);
+            audio_pitidos(1);
+            pedir_sync(SYNC_AVISAR);
         }
         break;
     case EV_PWR_CORTO:
         if (audio_grabando()) {
             terminar_grabacion(true);
-        } else if (ui_pantalla() == UI_LOCK) {
-            ui_pintar(UI_HOME);
         } else {
-            ui_pintar(UI_LOCK);
+            int n = almacen_montada() ? almacen_contar_cola() : 0;
+            if (n == 0) {
+                audio_tono(TONO_OK);
+            } else {
+                audio_pitidos(n);
+                pedir_sync(SYNC_AVISAR);
+            }
+            avisar_bateria();
         }
         break;
     case EV_PWR_LARGO:
         apagar();
         break;
     case EV_ARRIBA:
-        ui_mover(-1);
+        if (!audio_grabando()) {
+            if (ui_pantalla() == UI_LOCK) {
+                ui_pintar(UI_HOME);
+            } else {
+                ui_mover(-1);
+            }
+        }
         break;
     case EV_ABAJO:
-        ui_mover(1);
-        break;
-    case EV_SELECT:
         if (!audio_grabando()) {
-            ui_abrir();
+            if (ui_pantalla() == UI_LOCK) {
+                ui_pintar(UI_HOME);
+            } else {
+                ui_mover(1);
+            }
+        }
+        break;
+    case EV_SELECT_CORTO:
+        s_ignorar_ruleta_us = ahora_us() + 400000;
+        if (!audio_grabando()) {
+            if (ui_pantalla() == UI_LOCK) {
+                ui_pintar(UI_HOME);
+            } else {
+                ui_abrir();
+            }
+        }
+        break;
+    case EV_SELECT_LARGO:
+        s_ignorar_ruleta_us = ahora_us() + 400000;
+        if (!audio_grabando()) {
+            ui_atras();
         }
         break;
     }

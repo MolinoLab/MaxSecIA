@@ -9,15 +9,15 @@
 
 #define PERIODO_MS 10
 #define ANTIRREBOTE_MS 30
-#define LARGO_BOOT_MS 400
+#define LARGO_BOOT_MS 1500
 #define LARGO_PWR_MS 2500
+#define LARGO_SELECT_MS 600
 
 typedef struct {
     gpio_num_t pin;
-    int largo_ms;  // 0 = solo pulsación corta
-    evento_boton_t ev_corto, ev_largo, ev_suelto;
+    int largo_ms;
+    evento_boton_t ev_corto, ev_largo;
     bool tiene_largo;
-    bool tiene_suelto;
     bool armado;
     bool pulsado;
     bool largo_emitido;
@@ -52,8 +52,6 @@ static void actualizar(boton_t *b)
         if (lectura) {
             b->desde_us = esp_timer_get_time();
             b->largo_emitido = false;
-        } else if (b->largo_emitido && b->tiene_suelto) {
-            emitir(b->ev_suelto);
         } else if (!b->largo_emitido) {
             emitir(b->ev_corto);
         }
@@ -68,8 +66,8 @@ static void actualizar(boton_t *b)
 }
 
 static boton_t s_boot = {
-    .pin = PIN_BOTON_BOOT, .largo_ms = LARGO_BOOT_MS, .tiene_largo = true, .tiene_suelto = true,
-    .ev_corto = EV_BOOT_CORTO, .ev_largo = EV_BOOT_LARGO, .ev_suelto = EV_BOOT_SUELTO, .armado = true,
+    .pin = PIN_BOTON_BOOT, .largo_ms = LARGO_BOOT_MS, .tiene_largo = true,
+    .ev_corto = EV_BOOT_CORTO, .ev_largo = EV_BOOT_LARGO, .armado = true,
 };
 static boton_t s_pwr = {
     .pin = PIN_BOTON_PWR, .largo_ms = LARGO_PWR_MS, .tiene_largo = true,
@@ -82,7 +80,8 @@ static boton_t s_abajo = {
     .pin = PIN_ROCKER_ABAJO, .ev_corto = EV_ABAJO, .armado = true,
 };
 static boton_t s_select = {
-    .pin = PIN_ROCKER_SELECT, .ev_corto = EV_SELECT, .armado = true,
+    .pin = PIN_ROCKER_SELECT, .largo_ms = LARGO_SELECT_MS, .tiene_largo = true,
+    .ev_corto = EV_SELECT_CORTO, .ev_largo = EV_SELECT_LARGO, .armado = true,
 };
 
 static void tarea_botones(void *arg)
@@ -90,9 +89,20 @@ static void tarea_botones(void *arg)
     for (;;) {
         actualizar(&s_boot);
         actualizar(&s_pwr);
-        actualizar(&s_arriba);
-        actualizar(&s_abajo);
         actualizar(&s_select);
+        // Con el clic central la ruleta a veces cierra también arriba/abajo:
+        // mientras Select esté pulsado no contamos esos flancos.
+        if (!s_select.pulsado) {
+            actualizar(&s_arriba);
+            actualizar(&s_abajo);
+        } else {
+            s_arriba.pulsado = gpio_get_level(s_arriba.pin) == 0;
+            s_abajo.pulsado = gpio_get_level(s_abajo.pin) == 0;
+            s_arriba.estable_ms = 0;
+            s_abajo.estable_ms = 0;
+            s_arriba.largo_emitido = false;
+            s_abajo.largo_emitido = false;
+        }
         vTaskDelay(pdMS_TO_TICKS(PERIODO_MS));
     }
 }

@@ -8,3 +8,6 @@ bool red_conectar(void);
 
 // Apaga el Wi-Fi (ahorro de batería).
 void red_desconectar(void);
+
+// Cierto mientras hay IP. Se apaga al desconectar (la sync no deja el Wi-Fi encendido).
+bool red_conectada(void);

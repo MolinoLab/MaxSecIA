@@ -6,8 +6,8 @@
 #include "driver/gpio.h"
 
 // La alimentación la lleva el AXP2101 (I2C 0x34). No hay raíl GPIO de pantalla ni de audio.
-#define PIN_BOTON_BOOT   GPIO_NUM_0   // Record / atrás
-#define PIN_BOTON_PWR    GPIO_NUM_1   // PWR (activo a nivel bajo en el GPIO del PMIC)
+#define PIN_BOTON_BOOT   GPIO_NUM_0   // Grabar / sincronizar (como MiniSecIA)
+#define PIN_BOTON_PWR    GPIO_NUM_1   // Cola / apagar (activo a nivel bajo)
 #define PIN_ROCKER_ARRIBA GPIO_NUM_4
 #define PIN_ROCKER_SELECT GPIO_NUM_5
 #define PIN_ROCKER_ABAJO  GPIO_NUM_6

@@ -13,25 +13,42 @@ static const char *TAG = "contenido";
 
 #define TAM_RESUMEN (24 * 1024)
 
-bool contenido_sincronizar(void)
+int contenido_sincronizar(void)
 {
     char *buf = heap_caps_malloc(TAM_RESUMEN, MALLOC_CAP_SPIRAM);
     if (!buf) {
-        return false;
+        return -1;
     }
     int estado = cliente_get_texto("/resumen?formato=txt", buf, TAM_RESUMEN);
-    bool ok = false;
+    int r = -1;
     if (estado == 200 && buf[0]) {
-        FILE *f = fopen(RUTA_RESUMEN, "wb");
-        if (f) {
-            fputs(buf, f);
-            fclose(f);
-            ok = true;
-            ESP_LOGI(TAG, "Resumen guardado (%d bytes)", (int)strlen(buf));
+        bool igual = false;
+        FILE *prev = fopen(RUTA_RESUMEN, "rb");
+        if (prev) {
+            char *viejo = heap_caps_malloc(TAM_RESUMEN, MALLOC_CAP_SPIRAM);
+            if (viejo) {
+                size_t n = fread(viejo, 1, TAM_RESUMEN - 1, prev);
+                viejo[n] = '\0';
+                igual = strcmp(viejo, buf) == 0;
+                free(viejo);
+            }
+            fclose(prev);
+        }
+        if (igual) {
+            ESP_LOGI(TAG, "Resumen sin cambios (%d bytes)", (int)strlen(buf));
+            r = 0;
+        } else {
+            FILE *f = fopen(RUTA_RESUMEN, "wb");
+            if (f) {
+                fputs(buf, f);
+                fclose(f);
+                r = 1;
+                ESP_LOGI(TAG, "Resumen guardado (%d bytes)", (int)strlen(buf));
+            }
         }
     } else {
         ESP_LOGW(TAG, "GET /resumen HTTP %d", estado);
     }
     free(buf);
-    return ok;
+    return r;
 }

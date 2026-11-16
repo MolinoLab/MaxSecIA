@@ -22,6 +22,7 @@ static const char *TAG = "red";
 #define TIMEOUT_CONEXION_MS 15000
 #define MAX_AP 20
 
+static volatile bool s_con_ip = false;
 static EventGroupHandle_t s_eventos = NULL;
 static bool s_iniciado = false;
 static bool s_encendido = false;
@@ -29,9 +30,11 @@ static bool s_encendido = false;
 static void manejador(void *arg, esp_event_base_t base, int32_t id, void *datos)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        s_con_ip = false;
         xEventGroupClearBits(s_eventos, BIT_IP);
         xEventGroupSetBits(s_eventos, BIT_FALLO);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        s_con_ip = true;
         xEventGroupSetBits(s_eventos, BIT_IP);
     }
 }
@@ -174,9 +177,15 @@ bool red_conectar(void)
 
 void red_desconectar(void)
 {
+    s_con_ip = false;
     if (s_encendido) {
         esp_wifi_disconnect();
         esp_wifi_stop();
         s_encendido = false;
     }
+}
+
+bool red_conectada(void)
+{
+    return s_con_ip;
 }
