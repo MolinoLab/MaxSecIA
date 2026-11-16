@@ -8,9 +8,11 @@ Referencias, solo como patrón de uso. Su código es GPLv3 (ALXV y mach1na) y
 
 ## Patrones que sí se reimplementan
 
-- Pantalla grande en vertical de uso: inicio con un resumen, lista, ficha de un
-  elemento y una pantalla de bloqueo que deja los pendientes congelados en el
-  e-Paper al dormir o apagar.
+- Canvas lógico en **portrait 480×800** (rotado al panel 800×480), como FolloUp.
+- Home tipo dashboard: contador de pendientes + barra, menú vertical con iconos
+  y badges (Follow up, Todos, Notas, Agenda, Todo).
+- Listas en filas con icono por tipo; detalle como “sticky”; lock con resumen
+  TO-DO.
 - Rocker de tres vías (arriba, centro, abajo) más Record y PWR.
 - Record mantenido graba; al soltar se cierra el audio. PWR corto bloquea;
   PWR largo apaga.
