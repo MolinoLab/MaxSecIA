@@ -39,8 +39,6 @@ static void valores_por_defecto(ajustes_t *a)
     a->max_grabacion_seg = CONFIG_MS_MAX_GRABACION_SEG;
     a->reposo_seg = CONFIG_MS_REPOSO_SEG;
     a->reintento_min = CONFIG_MS_REINTENTO_MIN;
-    a->imagen_horas = CONFIG_MS_IMAGEN_HORAS;
-    a->sync_imagenes_horas = CONFIG_MS_SYNC_IMAGENES_HORAS;
     a->timeout_http_seg = CONFIG_MS_TIMEOUT_HTTP_SEG;
 }
 
@@ -70,8 +68,6 @@ static const campo_t CAMPOS[] = {
     CAMPO_INT("max_grabacion_seg", "max_grab", max_grabacion_seg, 10, 420),
     CAMPO_INT("reposo_seg", "reposo", reposo_seg, 20, 3600),
     CAMPO_INT("reintento_min", "reintento", reintento_min, 1, 1440),
-    CAMPO_INT("imagen_horas", "img_horas", imagen_horas, 0, 720),
-    CAMPO_INT("sync_imagenes_horas", "sync_img_h", sync_imagenes_horas, 1, 720),
     CAMPO_INT("timeout_http_seg", "timeout_http", timeout_http_seg, 30, 900),
 };
 #define N_CAMPOS (sizeof(CAMPOS) / sizeof(CAMPOS[0]))

@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -31,6 +32,7 @@ typedef struct {
     char titulo[80];
     char fecha[16];
     char id[40];
+    bool mia;
 } item_t;
 
 typedef enum {
@@ -50,6 +52,7 @@ static filtro_t s_filtro = FILTRO_TODOS;
 static int s_vista[MAX_ITEMS];
 static int s_nvista = 0;
 static ui_pantalla_t s_pantalla = UI_HOME;
+static int s_opcion = 0;
 static uint8_t *s_logic = NULL;
 static uint8_t *s_fb = NULL;
 
@@ -303,11 +306,6 @@ static void texto(int x, int y, const char *s)
     texto_esc(x, y, s, 2);
 }
 
-static void titulo(int x, int y, const char *s)
-{
-    texto_esc(x, y, s, 2);
-}
-
 // Entra en la caja. Corta por palabras y no dibuja fuera.
 static void texto_caja(int x, int y, int w, int h, int esc, const char *s)
 {
@@ -433,11 +431,16 @@ static void icono_tipo(const char *tipo, int x, int y)
     }
 }
 
+static bool es_tarea(const item_t *it)
+{
+    return it && (strcmp(it->tipo, "deck") == 0 || strcmp(it->tipo, "pendiente") == 0);
+}
+
 static bool pasa_filtro(const item_t *it, filtro_t f)
 {
     switch (f) {
     case FILTRO_FOLLOW:
-        return strcmp(it->tipo, "deck") == 0 || strcmp(it->tipo, "evento") == 0;
+        return it->mia && strcmp(it->tipo, "deck") == 0;
     case FILTRO_TODOS:  // Tareas
         return strcmp(it->tipo, "deck") == 0 || strcmp(it->tipo, "pendiente") == 0;
     case FILTRO_NOTAS:
@@ -481,6 +484,7 @@ static void cargar_libros(void)
         snprintf(it->titulo, sizeof(it->titulo), "%s", e->d_name);
         snprintf(it->fecha, sizeof(it->fecha), "%s", md ? "md" : "txt");
         snprintf(it->id, sizeof(it->id), "%s", e->d_name);
+        it->mia = false;
     }
     closedir(d);
 }
@@ -513,6 +517,18 @@ static void leer_libro(const item_t *it)
     }
 }
 
+static int cmp_fecha_follow(const void *a, const void *b)
+{
+    const item_t *ia = &s_items[*(const int *)a];
+    const item_t *ib = &s_items[*(const int *)b];
+    bool va = ia->fecha[0] != '\0';
+    bool vb = ib->fecha[0] != '\0';
+    if (va != vb) {
+        return va ? -1 : 1;
+    }
+    return strcmp(ia->fecha, ib->fecha);
+}
+
 static void reconstruir_vista(void)
 {
     s_nvista = 0;
@@ -526,6 +542,9 @@ static void reconstruir_vista(void)
             if (pasa_filtro(&s_items[i], s_filtro)) {
                 s_vista[s_nvista++] = i;
             }
+        }
+        if (s_filtro == FILTRO_FOLLOW && s_nvista > 1) {
+            qsort(s_vista, (size_t)s_nvista, sizeof(s_vista[0]), cmp_fecha_follow);
         }
     }
     if (s_sel >= s_nvista) {
@@ -611,14 +630,7 @@ static void icono_bateria(int x, int y, int pct)
 
 static void barra_estado(void)
 {
-    // Gris ~50 % (trama), no negro sólido.
-    for (int y = 0; y < 44; y++) {
-        for (int x = 0; x < UI_W; x++) {
-            if (((x + y) & 1) == 0) {
-                px(x, y, true);
-            }
-        }
-    }
+    hline(0, 43, UI_W, true);
     hline(0, 44, UI_W, true);
     char hora[8] = "--:--";
     time_t now = time(NULL);
@@ -643,7 +655,6 @@ static void barra_estado(void)
 }
 
 static const char *NOMBRES_MENU[MENU_N] = {"Follow", "Tareas", "Notas", "Topics", "Books"};
-static const char *TITULOS_MENU[MENU_N] = {"Follow up", "Tareas", "Notas", "Topics", "Books"};
 static const filtro_t FILTROS_MENU[MENU_N] = {
     FILTRO_FOLLOW, FILTRO_TODOS, FILTRO_NOTAS, FILTRO_TOPICS, FILTRO_BOOKS,
 };
@@ -720,25 +731,20 @@ static void mensaje_vacio(void)
     } else if (s_filtro == FILTRO_BOOKS) {
         msg = "No hay libros ni articulos. Deja .txt o .md en /sdcard/libros.";
     }
-    texto_caja(MARGEN, 160, UI_W - 2 * MARGEN, 160, 2, msg);
+    texto_caja(MARGEN, 88, UI_W - 2 * MARGEN, 160, 2, msg);
 }
 
 // con_selector: en lista se marca el ítem; en home solo se previsualiza la sección.
 static void pintar_cuerpo_lista(bool con_selector)
 {
-    titulo(MARGEN, 56, TITULOS_MENU[menu_activo()]);
-    char badge[24];
-    snprintf(badge, sizeof(badge), "%d", s_nvista);
-    texto_esc(UI_W - MARGEN - 48, 60, badge, 2);
-
     if (s_nvista == 0) {
         mensaje_vacio();
         return;
     }
 
-    const int fila = 72;
-    const int y0 = 96;
-    const int filas = (BARRA_Y - 40 - y0) / fila;
+    const int fila = 58;
+    const int y0 = 68;
+    const int filas = (BARRA_Y - y0) / fila;
     if (con_selector) {
         if (s_sel < s_base) {
             s_base = s_sel;
@@ -759,14 +765,14 @@ static void pintar_cuerpo_lista(bool con_selector)
         int ii = s_vista[vi];
         bool sel = con_selector && (vi == s_sel);
         item_t *it = item_en(ii);
-        rect(MARGEN - 4, y, ancho + 8, fila - 6, false, true);
+        rect(MARGEN - 4, y, ancho + 8, fila - 4, false, true);
         if (sel) {
-            rect(MARGEN - 4, y, 8, fila - 6, true, true);
+            rect(MARGEN - 4, y, 8, fila - 4, true, true);
         }
-        icono_tipo(it->tipo, MARGEN + 12, y + 16);
-        texto_caja(MARGEN + 52, y + 8, ancho - 64, 32, 2, it->titulo);
+        icono_tipo(it->tipo, MARGEN + 12, y + 12);
+        texto_caja(MARGEN + 52, y + 2, ancho - 64, 26, 2, it->titulo);
         const char *sub = it->fecha[0] ? it->fecha : it->tipo;
-        texto_caja(MARGEN + 52, y + 42, ancho - 64, 18, 2, sub);
+        texto_caja(MARGEN + 52, y + 30, ancho - 64, 16, 2, sub);
         y += fila;
     }
 }
@@ -777,7 +783,6 @@ static void pintar_home(void)
     limpiar();
     barra_estado();
     pintar_cuerpo_lista(false);
-    texto_esc(MARGEN, BARRA_Y - 28, "Rocker cambia seccion  ·  Clic entra", 2);
     barra_menu();
     volcar_rotado();
 }
@@ -787,10 +792,11 @@ static void pintar_lista(void)
     limpiar();
     barra_estado();
     pintar_cuerpo_lista(true);
-    texto_esc(MARGEN, BARRA_Y - 28, "Rocker mueve  ·  Clic abre  ·  Largo sale", 2);
     barra_menu();
     volcar_rotado();
 }
+
+static item_t *seleccion(void);
 
 static void pintar_detalle(void)
 {
@@ -822,6 +828,46 @@ static void pintar_detalle(void)
     volcar_rotado();
 }
 
+static item_t *seleccion(void)
+{
+    if (s_nvista <= 0 || s_sel < 0 || s_sel >= s_nvista) {
+        return NULL;
+    }
+    return item_en(s_vista[s_sel]);
+}
+
+static void pintar_accion(void)
+{
+    static const char *opciones[] = {"Completar", "Archivar"};
+    limpiar();
+    barra_estado();
+    item_t *it = seleccion();
+    if (!it) {
+        texto(MARGEN, 64, "Sin tarea");
+        barra_menu();
+        volcar_rotado();
+        return;
+    }
+    texto_esc(MARGEN, 64, "Que hacer con esta tarea", 2);
+    texto_caja(MARGEN, 100, UI_W - 2 * MARGEN, 56, 2, it->titulo);
+    for (int i = 0; i < 2; i++) {
+        int y = 190 + i * 130;
+        bool sel = i == s_opcion;
+        rect(MARGEN, y, UI_W - 2 * MARGEN, 104, true, sel);
+        if (!sel) {
+            rect(MARGEN, y, UI_W - 2 * MARGEN, 104, false, true);
+        }
+        if (sel) {
+            s_tinta_blanca = true;
+        }
+        int tw = (int)strlen(opciones[i]) * 18;
+        texto_esc((UI_W - tw) / 2, y + 34, opciones[i], 3);
+        s_tinta_blanca = false;
+    }
+    barra_menu();
+    volcar_rotado();
+}
+
 static void pintar_lock(void)
 {
     limpiar();
@@ -844,7 +890,7 @@ static void pintar_lock(void)
         int y = 140;
         int shown = 0;
         int ancho = UI_W - 2 * MARGEN;
-        for (int i = 0; i < s_n && shown < 7; i++) {
+        for (int i = 0; i < s_n && shown < 8; i++) {
             if (!pasa_filtro(&s_items[i], FILTRO_TODOS)) {
                 continue;
             }
@@ -859,7 +905,6 @@ static void pintar_lock(void)
             texto_caja(MARGEN, y + 4, ancho, 20, 2, line);
         }
     }
-    texto_caja(MARGEN, UI_H - 40, UI_W - 2 * MARGEN, 20, 2, "Ruleta desbloquea  ·  BOOT graba");
     volcar_rotado();
 }
 
@@ -897,15 +942,29 @@ void ui_cargar_cache(void)
             continue;
         }
         *id++ = '\0';
-        char *nl = strchr(id, '\n');
+        char *marca = strchr(id, '\t');
+        if (marca) {
+            *marca++ = '\0';
+        }
+        char *corte = marca ? marca : id;
+        char *nl = strchr(corte, '\n');
         if (nl) {
             *nl = '\0';
+        }
+        char *cr = strchr(corte, '\r');
+        if (cr) {
+            *cr = '\0';
+        }
+        cr = strchr(id, '\r');
+        if (cr) {
+            *cr = '\0';
         }
         item_t *it = &s_items[s_n++];
         snprintf(it->tipo, sizeof(it->tipo), "%s", tipo);
         snprintf(it->titulo, sizeof(it->titulo), "%s", titulo);
         snprintf(it->fecha, sizeof(it->fecha), "%s", fecha);
         snprintf(it->id, sizeof(it->id), "%s", id);
+        it->mia = marca && strcmp(marca, "yo") == 0;
     }
     fclose(f);
     reconstruir_vista();
@@ -931,6 +990,8 @@ void ui_pintar(ui_pantalla_t pantalla)
     s_pantalla = pantalla;
     if (pantalla == UI_LOCK) {
         pintar_lock();
+    } else if (pantalla == UI_ACCION) {
+        pintar_accion();
     } else if (pantalla == UI_DETALLE) {
         pintar_detalle();
     } else if (pantalla == UI_LISTA) {
@@ -975,22 +1036,58 @@ void ui_mover(int delta)
         if (s_sel != antes) {
             ui_pintar(UI_LISTA);
         }
+        return;
+    }
+    if (s_pantalla == UI_ACCION) {
+        int antes = s_opcion;
+        s_opcion += delta;
+        if (s_opcion < 0) {
+            s_opcion = 0;
+        }
+        if (s_opcion > 1) {
+            s_opcion = 1;
+        }
+        if (s_opcion != antes) {
+            ui_pintar(UI_ACCION);
+        }
     }
 }
 
-void ui_abrir(void)
+ui_paso_t ui_abrir(void)
 {
     if (s_pantalla == UI_HOME) {
         sincronizar_filtro_menu();
         ui_pintar(UI_LISTA);
     } else if (s_pantalla == UI_LISTA && s_nvista > 0) {
         ui_pintar(UI_DETALLE);
+    } else if (s_pantalla == UI_DETALLE) {
+        item_t *it = seleccion();
+        if (es_tarea(it)) {
+            s_opcion = 0;
+            ui_pintar(UI_ACCION);
+        }
+    } else if (s_pantalla == UI_ACCION) {
+        return s_opcion == 0 ? UI_PEDIR_COMPLETAR : UI_PEDIR_ARCHIVAR;
     }
+    return UI_SIGUE;
+}
+
+bool ui_accion_datos(char *tipo, size_t ntipo, char *id, size_t nid)
+{
+    item_t *it = seleccion();
+    if (!es_tarea(it) || !tipo || ntipo == 0 || !id || nid == 0) {
+        return false;
+    }
+    snprintf(tipo, ntipo, "%s", it->tipo);
+    snprintf(id, nid, "%s", it->id);
+    return tipo[0] && id[0];
 }
 
 void ui_atras(void)
 {
-    if (s_pantalla == UI_DETALLE) {
+    if (s_pantalla == UI_ACCION) {
+        ui_pintar(UI_DETALLE);
+    } else if (s_pantalla == UI_DETALLE) {
         ui_pintar(UI_LISTA);
     } else if (s_pantalla == UI_LISTA || s_pantalla == UI_LOCK) {
         // Vuelve al home con la misma sección seleccionada en el menú.

@@ -25,6 +25,9 @@ despertar_t energia_iniciar(void);
 // llamarlo antes de montar la microSD.
 void energia_pmic_iniciar(i2c_master_bus_handle_t bus);
 
+// Activa el corte por mantener PWR. Llamar solo cuando ese botón ya se ha soltado.
+void energia_armar_apagado(void);
+
 void energia_audio(bool encendido);
 void energia_pantalla(bool encendido);
 void energia_led(modo_led_t modo);
@@ -35,5 +38,5 @@ int energia_bateria_mv(void);
 // Duerme hasta pulsar un botón o hasta `segundos` (0 = sin temporizador). No vuelve.
 void energia_dormir(uint32_t segundos);
 
-// Corta la batería. Con USB conectado la placa sigue alimentada: entonces duerme sin temporizador.
+// Corta la batería por el AXP2101. Con USB la placa sigue alimentada: entonces duerme sin temporizador.
 void energia_apagar(void);

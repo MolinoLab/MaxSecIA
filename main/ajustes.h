@@ -21,8 +21,6 @@ typedef struct {
     int max_grabacion_seg;
     int reposo_seg;
     int reintento_min;
-    int imagen_horas;
-    int sync_imagenes_horas;
     int timeout_http_seg;
 } ajustes_t;
 

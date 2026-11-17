@@ -15,10 +15,9 @@ typedef enum {
 // POST /voz en multipart. `grabado_en` en ISO UTC o "" si el reloj no tenía hora.
 resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const char *grabado_en);
 
-// GET de `camino` (p. ej. "/imagenes/manifest?formato=txt"). Devuelve el código HTTP
+// GET de `camino` (p. ej. "/resumen?formato=txt"). Devuelve el código HTTP
 // (o -1) y deja el cuerpo, terminado en '\0', en `buf`.
 int cliente_get_texto(const char *camino, char *buf, size_t n);
 
-// GET a fichero. Devuelve el código HTTP (o -1); `sha256` recibe el hash de lo descargado
-// y `bytes` su tamaño.
-int cliente_descargar(const char *camino, const char *destino, uint8_t sha256[32], long *bytes);
+// POST application/x-www-form-urlencoded. Devuelve el código HTTP, o -1.
+int cliente_post_form(const char *camino, const char *cuerpo);

@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "ajustes.c"
         "almacen.c"
+        "apagado.c"
         "audio.c"
         "botones.c"
         "cliente.c"
@@ -13,6 +14,10 @@ idf_component_register(
         "ui.c"
         "contenido.c"
     INCLUDE_DIRS "."
+    EMBED_FILES
+        "apagado_0.bin"
+        "apagado_1.bin"
+        "apagado_2.bin"
     REQUIRES
         esp_adc
         esp_driver_gpio

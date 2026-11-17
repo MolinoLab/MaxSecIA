@@ -7,10 +7,9 @@
 
 #define DIR_COLA      "/sdcard/cola"
 #define DIR_FALLIDOS  "/sdcard/fallidos"
-#define DIR_IMG_FIJAS "/sdcard/img/fijas"
-#define DIR_IMG_REM   "/sdcard/img/remotas"
 #define DIR_CACHE     "/sdcard/cache"
 #define RUTA_RESUMEN  "/sdcard/cache/resumen.txt"
+#define RUTA_ACCIONES "/sdcard/cache/acciones.txt"
 
 #define RUTA_MAX 128
 #define WAV_CABECERA 44

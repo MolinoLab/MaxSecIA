@@ -46,8 +46,11 @@ void energia_pmic_iniciar(i2c_master_bus_handle_t bus)
         return;
     }
     // Secuencia publicada para esta placa (xiaozhi / Waveshare 3.97): ALDO1–3 a 3,3 V.
-    pmic_escribir(0x22, 0x06);
-    pmic_escribir(0x27, 0x10);
+    // El apagado por mantener PWR no se arma aquí: el mismo pulsado que enciende
+    // seguiría contando y el PMIC cortaría a los pocos segundos, a veces sin
+    // volver a aceptar el botón. OFFLEVEL queda en 10 s para cuando se arme.
+    pmic_escribir(0x22, 0x04);
+    pmic_escribir(0x27, 0x1C);
     pmic_escribir(0x80, 0x01);
     pmic_escribir(0x90, 0x00);
     pmic_escribir(0x91, 0x00);
@@ -65,13 +68,18 @@ void energia_pmic_iniciar(i2c_master_bus_handle_t bus)
     if (adc >= 0) {
         pmic_escribir(0x30, (uint8_t)(adc | 0x01));
     }
+    // Bit 0 de 0x10 es el corte inmediato. Bit 2 (PWR 16 s) se arma al soltar el botón.
+    int comun = pmic_leer(0x10);
+    if (comun >= 0) {
+        pmic_escribir(0x10, (uint8_t)(comun & (uint8_t)~0x05));
+    }
     // La microSD y el panel necesitan que los ALDO estabilicen (ejemplo Waveshare: ~1 s).
     vTaskDelay(pdMS_TO_TICKS(800));
     ESP_LOGI(TAG, "AXP2101: ALDO1-3 a 3,3 V");
 }
 
 // La 3.97 no tiene LED de estado ni raíles GPIO como la 1.54G.
-// El apagado real de la batería lo hace el AXP2101; aquí solo hay sueño profundo.
+// El apagado de la batería lo hace el AXP2101 (registro 0x10, bit 0).
 
 despertar_t energia_iniciar(void)
 {
@@ -154,9 +162,49 @@ void energia_dormir(uint32_t segundos)
     dormir_con_botones(segundos);
 }
 
+static bool s_apagado_hardware = false;
+
+void energia_armar_apagado(void)
+{
+    if (s_apagado_hardware || !s_pmic) {
+        return;
+    }
+    s_apagado_hardware = true;
+    // Bit 1 de 0x22: PWR largo puede cortar si el firmware ya no responde.
+    pmic_escribir(0x22, 0x06);
+    int comun = pmic_leer(0x10);
+    if (comun >= 0) {
+        pmic_escribir(0x10, (uint8_t)((comun | 0x04) & (uint8_t)~0x01));
+    }
+    ESP_LOGI(TAG, "Apagado por PWR armado");
+}
+
+static bool hay_vbus(void)
+{
+    // STATUS1 bit 5: VBUS presente (XPowersLib / AXP2101).
+    int st = pmic_leer(0x00);
+    return st >= 0 && (st & 0x20) != 0;
+}
+
 void energia_apagar(void)
 {
-    ESP_LOGW(TAG, "Sin corte de PMIC: sueño profundo sin temporizador");
     s_modo_led = LED_APAGADO;
+    esperar_botones_sueltos();
+    // El PMIC tiene que ver PWR suelto antes del corte. Si se apaga con el
+    // botón aún bajo, el siguiente pulsado no vuelve a encender.
+    vTaskDelay(pdMS_TO_TICKS(250));
+    if (s_pmic && !hay_vbus()) {
+        ESP_LOGW(TAG, "Corte de batería (AXP2101)");
+        int cfg = pmic_leer(0x10);
+        if (cfg >= 0) {
+            pmic_escribir(0x10, (uint8_t)(cfg | 0x01));
+        }
+        // Si el corte funciona, de aquí no se vuelve. Con el botón aún
+        // interpretado como encendido, o si el registro no surte efecto, se duerme.
+        vTaskDelay(pdMS_TO_TICKS(400));
+        ESP_LOGW(TAG, "El PMIC no cortó la alimentación");
+    } else {
+        ESP_LOGW(TAG, "USB conectado: sueño profundo sin temporizador");
+    }
     dormir_con_botones(0);
 }

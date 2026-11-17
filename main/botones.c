@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #include "driver/gpio.h"
+#include "energia.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
 #include "placa.h"
@@ -22,6 +23,8 @@ typedef struct {
     bool pulsado;
     bool largo_emitido;
     int estable_ms;
+    int silencio_ms;
+    int refractario_ms;
     int64_t desde_us;
 } boton_t;
 
@@ -39,7 +42,22 @@ static void actualizar(boton_t *b)
         if (!lectura) {
             b->armado = true;
             b->pulsado = false;
+            if (b->pin == PIN_BOTON_PWR) {
+                energia_armar_apagado();
+            }
         }
+        return;
+    }
+    // Un rebote largo del rocker cuenta como otro clic y la pantalla, lenta,
+    // acaba mostrando el frame anterior. Tras un clic se ignoran unos ms.
+    if (b->silencio_ms > 0) {
+        b->silencio_ms -= PERIODO_MS;
+        if (b->silencio_ms < 0) {
+            b->silencio_ms = 0;
+        }
+        b->pulsado = lectura;
+        b->estable_ms = 0;
+        b->largo_emitido = false;
         return;
     }
     if (lectura != b->pulsado) {
@@ -54,6 +72,7 @@ static void actualizar(boton_t *b)
             b->largo_emitido = false;
         } else if (!b->largo_emitido) {
             emitir(b->ev_corto);
+            b->silencio_ms = b->refractario_ms;
         }
         return;
     }
@@ -74,10 +93,10 @@ static boton_t s_pwr = {
     .ev_corto = EV_PWR_CORTO, .ev_largo = EV_PWR_LARGO, .armado = false,
 };
 static boton_t s_arriba = {
-    .pin = PIN_ROCKER_ARRIBA, .ev_corto = EV_ARRIBA, .armado = true,
+    .pin = PIN_ROCKER_ARRIBA, .ev_corto = EV_ARRIBA, .armado = true, .refractario_ms = 220,
 };
 static boton_t s_abajo = {
-    .pin = PIN_ROCKER_ABAJO, .ev_corto = EV_ABAJO, .armado = true,
+    .pin = PIN_ROCKER_ABAJO, .ev_corto = EV_ABAJO, .armado = true, .refractario_ms = 220,
 };
 static boton_t s_select = {
     .pin = PIN_ROCKER_SELECT, .largo_ms = LARGO_SELECT_MS, .tiene_largo = true,

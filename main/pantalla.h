@@ -21,3 +21,7 @@ bool pantalla_actualizar(const uint8_t *fb);
 bool pantalla_refresco_parcial(int x, int y, int w, int h, const uint8_t *fb);
 
 bool pantalla_ocupada(void);
+
+// Deja el controlador en deep sleep para que el corte de alimentación no
+// estropee la última imagen. El siguiente refresco reinicia el panel.
+void pantalla_dormir(void);

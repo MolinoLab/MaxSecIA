@@ -12,7 +12,6 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
-#include "mbedtls/sha256.h"
 
 static const char *TAG = "cliente";
 
@@ -194,44 +193,24 @@ int cliente_get_texto(const char *camino, char *buf, size_t n)
     return estado;
 }
 
-int cliente_descargar(const char *camino, const char *destino, uint8_t sha256[32], long *bytes)
+int cliente_post_form(const char *camino, const char *cuerpo)
 {
-    esp_http_client_handle_t c = crear(camino, HTTP_METHOD_GET, NULL);
+    esp_http_client_handle_t c = crear(camino, HTTP_METHOD_POST, NULL);
     if (!c) {
         return -1;
     }
+    esp_http_client_set_header(c, "Content-Type", "application/x-www-form-urlencoded");
     int estado = -1;
-    long total = 0;
-    char *trozo = heap_caps_malloc(4096, MALLOC_CAP_SPIRAM);
-    FILE *f = NULL;
-    if (trozo && esp_http_client_open(c, 0) == ESP_OK && esp_http_client_fetch_headers(c) >= 0) {
+    int len = cuerpo ? (int)strlen(cuerpo) : 0;
+    char resp[160];
+    resp[0] = '\0';
+    if (esp_http_client_open(c, len) == ESP_OK && escribir_todo(c, cuerpo ? cuerpo : "", len) &&
+        esp_http_client_fetch_headers(c) >= 0) {
         estado = esp_http_client_get_status_code(c);
-        if (estado == 200 && (f = fopen(destino, "wb")) != NULL) {
-            mbedtls_sha256_context ctx;
-            mbedtls_sha256_init(&ctx);
-            mbedtls_sha256_starts(&ctx, 0);
-            int k;
-            while ((k = esp_http_client_read(c, trozo, 4096)) > 0) {
-                if (fwrite(trozo, 1, k, f) != (size_t)k) {
-                    estado = -1;
-                    break;
-                }
-                mbedtls_sha256_update(&ctx, (const unsigned char *)trozo, k);
-                total += k;
-            }
-            if (k < 0) {
-                estado = -1;
-            }
-            mbedtls_sha256_finish(&ctx, sha256);
-            mbedtls_sha256_free(&ctx);
-            fclose(f);
-        }
+        leer_cuerpo(c, resp, sizeof(resp));
     }
-    free(trozo);
+    ESP_LOGI(TAG, "POST %s -> %d %s", camino, estado, resp);
     esp_http_client_close(c);
     esp_http_client_cleanup(c);
-    if (bytes) {
-        *bytes = total;
-    }
     return estado;
 }

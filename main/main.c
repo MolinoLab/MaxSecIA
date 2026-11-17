@@ -2,7 +2,7 @@
 //
 // BOOT corto: grabar / terminar. BOOT largo: sincronizar.
 // PWR corto: cancelar grabación o estado de cola. PWR largo: apagar.
-// Rocker: arriba / abajo. Select corto: entrar. Select largo: salir.
+// Rocker: arriba / abajo. Select corto: entrar; en una tarea, completar o archivar. Select largo: salir.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +10,7 @@
 
 #include "ajustes.h"
 #include "almacen.h"
+#include "apagado.h"
 #include "audio.h"
 #include "botones.h"
 #include "cliente.h"
@@ -31,9 +32,8 @@
 
 static const char *TAG = "main";
 
-#define SYNC_AVISAR   (1 << 0)  // iniciada por el usuario: sonido con el resultado
-#define SYNC_IMAGENES (1 << 1)  // sincronizar imágenes aunque no toque, y cambiar la imagen
-#define SYNC_REVISAR  (1 << 2)  // despertar la tarea de sync (cola / imágenes si toca); no usar 0 con eSetBits
+#define SYNC_AVISAR  (1 << 0)  // iniciada por el usuario: sonido con el resultado
+#define SYNC_REVISAR (1 << 1)  // despertar la tarea de sync (cola y resumen); no usar 0 con eSetBits
 #define LOTE_COLA 16
 #define BYTES_MIN_GRABACION (AUDIO_HZ * 2 / 2)  // 0,5 s
 #define BATERIA_BAJA_MV 3450
@@ -198,6 +198,9 @@ static void tarea_sync(void *arg)
                     tono_resultado(r);
                 }
                 if (almacen_montada()) {
+                    contenido_enviar_cola();
+                }
+                if (almacen_montada()) {
                     int antes = ui_num_items();
                     int cr = contenido_sincronizar();
                     if (cr >= 0) {
@@ -286,14 +289,13 @@ static void apagar(void)
     if (audio_grabando()) {
         terminar_grabacion(false);  // se queda en la cola para la próxima vez
     }
-    if (ui_pantalla() != UI_LOCK) {
-        ui_pintar(UI_LOCK);
-        esperar_pantalla();
-    }
+    pantalla_mostrar(apagado_imagen_aleatoria());
+    esperar_pantalla();
     audio_tono(TONO_APAGADO);
     red_desconectar();
     audio_apagar();
     almacen_desmontar();
+    pantalla_dormir();
     energia_apagar();
 }
 
@@ -377,7 +379,18 @@ static void manejar_boton(evento_boton_t ev)
             if (ui_pantalla() == UI_LOCK) {
                 ui_pintar(UI_HOME);
             } else {
-                ui_abrir();
+                ui_paso_t paso = ui_abrir();
+                if (paso != UI_SIGUE) {
+                    char tipo[12], id[40];
+                    const char *accion = paso == UI_PEDIR_COMPLETAR ? "completar" : "archivar";
+                    if (ui_accion_datos(tipo, sizeof(tipo), id, sizeof(id)) &&
+                        contenido_encolar(accion, tipo, id)) {
+                        contenido_olvidar(tipo, id);
+                        ui_cargar_cache();
+                        ui_pintar(UI_LISTA);
+                        pedir_sync(SYNC_REVISAR);
+                    }
+                }
             }
         }
         break;
@@ -445,14 +458,17 @@ void app_main(void)
     switch (causa) {
     case DESPERTAR_ENCENDIDO:
         avisar_bateria();
-        // Al encender: bajar/rotar imágenes (refresco ~20 s). Sin esto, con cola vacía
-        // y sync_img reciente la pantalla no cambia sola.
         pedir_sync(SYNC_REVISAR);
         ui_cargar_cache();
         ui_pintar(UI_HOME);
         break;
     case DESPERTAR_PWR:
+        // Pulsar PWR despierta del sueño (con USB el PMIC no llega a cortar).
+        // Hay que pintar el inicio: si no, se queda la imagen de apagado y vuelve a dormir.
+        avisar_bateria();
         pedir_sync(SYNC_AVISAR);
+        ui_cargar_cache();
+        ui_pintar(UI_HOME);
         break;
     case DESPERTAR_TEMPORIZADOR:
         s_reposo_rapido = true;

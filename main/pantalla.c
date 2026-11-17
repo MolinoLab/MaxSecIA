@@ -150,31 +150,8 @@ static bool iniciar_panel(void)
     return esperar_libre();
 }
 
-// Ventana a alto completo. Mismo modo de dirección que el refresco completo
-// (X+, Y-): si no, el parcial queda en espejo respecto al frame base.
-static bool refrescar_ventana(int x0, int x1)
+static void fijar_ventana(int x0, int x1)
 {
-    if (x0 < 0) {
-        x0 = 0;
-    }
-    if (x1 > EPD_ANCHO) {
-        x1 = EPD_ANCHO;
-    }
-    x0 &= ~7;
-    x1 = (x1 + 7) & ~7;
-    if (x1 <= x0) {
-        return true;
-    }
-    int wb = (x1 - x0) / 8;
-    const int stride = EPD_ANCHO / 8;
-
-    comando(0x18);
-    dato(0x80);
-    comando(0x3C);
-    dato(0x80);
-    comando(0x11);
-    dato(0x01);  // igual que iniciar_panel: X+, Y-
-
     comando(0x44);
     dato(x0 & 0xFF);
     dato((x0 >> 8) & 0xFF);
@@ -193,18 +170,60 @@ static bool refrescar_ventana(int x0, int x1)
     comando(0x4F);
     dato((EPD_ALTO - 1) & 0xFF);
     dato((EPD_ALTO - 1) >> 8);
+}
 
-    // Con Y- el controlador consume primero la fila de panel Y=alto-1,
-    // que en nuestro buffer es la fila 0 (igual que el volcado completo).
-    comando(0x24);
+static void escribir_plano(uint8_t cmd, int x0, int x1, const uint8_t *src)
+{
+    int wb = (x1 - x0) / 8;
+    const int stride = EPD_ANCHO / 8;
+    fijar_ventana(x0, x1);
+    comando(cmd);
     for (int y = 0; y < EPD_ALTO; y++) {
-        datos(s_fb + (size_t)y * stride + (size_t)(x0 / 8), (size_t)wb);
+        datos(src + (size_t)y * stride + (size_t)(x0 / 8), (size_t)wb);
     }
+}
+
+// Ventana a alto completo. Mismo modo de dirección que el refresco completo
+// (X+, Y-): si no, el parcial queda en espejo respecto al frame base.
+// El SSD1677 compara el plano 0x26 (lo que ya está en el panel) con el 0x24
+// (lo nuevo). Si 0x26 se queda en un frame viejo, cada dos refrescos vuelve
+// a salir la imagen anterior.
+static bool refrescar_ventana(int x0, int x1)
+{
+    if (x0 < 0) {
+        x0 = 0;
+    }
+    if (x1 > EPD_ANCHO) {
+        x1 = EPD_ANCHO;
+    }
+    x0 &= ~7;
+    x1 = (x1 + 7) & ~7;
+    if (x1 <= x0) {
+        return true;
+    }
+
+    comando(0x18);
+    dato(0x80);
+    comando(0x3C);
+    dato(0x80);
+    comando(0x11);
+    dato(0x01);  // igual que iniciar_panel: X+, Y-
+    comando(0x21);
+    dato(0x00);
+    dato(0x00);
+
+    escribir_plano(0x26, x0, x1, s_prev);
+    escribir_plano(0x24, x0, x1, s_fb);
 
     comando(0x22);
     dato(0xFF);
     comando(0x20);
-    return esperar_libre();
+    if (!esperar_libre()) {
+        return false;
+    }
+    escribir_plano(0x26, x0, x1, s_fb);
+    escribir_plano(0x24, x0, x1, s_fb);
+    return true;
 }
 
 static void volcar_y_refrescar(void)
@@ -382,4 +401,18 @@ bool pantalla_refresco_parcial(int x, int y, int w, int h, const uint8_t *fb)
 bool pantalla_ocupada(void)
 {
     return s_ocupada;
+}
+
+void pantalla_dormir(void)
+{
+    if (!s_spi || !s_trozo) {
+        return;
+    }
+    for (int i = 0; i < 1000 && s_ocupada; i++) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    comando(0x10);
+    dato(0x01);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    s_listo = false;
 }

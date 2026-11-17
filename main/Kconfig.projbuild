@@ -57,16 +57,6 @@ menu "MaxSecIA"
         range 1 1440
         default 15
 
-    config MS_IMAGEN_HORAS
-        int "Horas entre cambios de imagen en la pantalla (0 = solo manual)"
-        range 0 720
-        default 6
-
-    config MS_SYNC_IMAGENES_HORAS
-        int "Horas entre sincronizaciones de imágenes con el servidor"
-        range 1 720
-        default 24
-
     config MS_TIMEOUT_HTTP_SEG
         int "Timeout HTTP (s). La transcripción de audios largos tarda"
         range 30 900
